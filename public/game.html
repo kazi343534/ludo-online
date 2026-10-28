@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ludo Online - Game</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%236366f1'/%3E%3Ccircle cx='32' cy='32' r='10' fill='white'/%3E%3Ccircle cx='68' cy='68' r='10' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="game-body">
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand">
+        <span class="brand-badge">★</span>
+        <span class="brand-name">LUDO</span>
+      </div>
+      <div class="room-info">
+        <span class="label">Room</span>
+        <span id="roomCode" class="code">------</span>
+        <button id="copyBtn" class="mini-btn" title="Copy room code">Copy</button>
+      </div>
+    </div>
+    <button id="leaveBtn" class="mini-btn danger">Leave</button>
+  </header>
+
+  <main class="game-main">
+    <div class="board-wrap">
+      <div id="board" class="board"></div>
+    </div>
+
+    <section id="videoCard" class="video-card">
+      <div class="video-head">
+        <span class="video-title"><span class="live-dot"></span> Cameras</span>
+        <span id="videoCount" class="video-count">0 live</span>
+      </div>
+      <div id="videoTiles" class="video-tiles"></div>
+      <div class="video-controls">
+        <button id="joinVideoBtn" class="btn primary video-join">Join Video &amp; Mic</button>
+        <button id="camBtn" class="mini-btn video-btn hidden">Camera On</button>
+        <button id="micBtn" class="mini-btn video-btn hidden">Mic On</button>
+        <button id="leaveVideoBtn" class="mini-btn danger hidden">Leave</button>
+      </div>
+      <p id="videoHint" class="video-hint">Optional: join video to see and hear each other.</p>
+    </section>
+
+    <aside class="side">
+      <div id="turnBanner" class="turn-banner">Connecting…</div>
+
+      <div class="dice-area">
+        <div id="dice" class="dice" data-value="1">
+          <div class="pip"></div><div class="pip"></div><div class="pip"></div>
+          <div class="pip"></div><div class="pip"></div><div class="pip"></div>
+          <div class="pip"></div><div class="pip"></div><div class="pip"></div>
+        </div>
+        <button id="rollBtn" class="btn primary big" disabled>Roll Dice</button>
+      </div>
+
+      <div id="playersPanel" class="players-panel"></div>
+
+      <div id="reactionBar" class="reaction-bar" aria-label="Quick reactions">
+        <button type="button" data-text="LOL!">LOL!</button>
+        <button type="button" data-text="WOW!">WOW!</button>
+        <button type="button" data-text="NO!">NO!</button>
+        <button type="button" data-text="GG!">GG!</button>
+      </div>
+
+      <div id="adminPanel" class="admin-panel hidden">
+        <div class="admin-head">
+          <span>Admin Dice Control</span>
+          <label class="switch">
+            <input type="checkbox" id="forceToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <p class="admin-hint">When ON, your next roll uses the number you pick. Other players cannot see this.</p>
+        <div id="forceNumbers" class="force-numbers"></div>
+        <div id="forceStatus" class="admin-status">Force mode OFF</div>
+      </div>
+
+      <div id="statusMsg" class="status-msg"></div>
+    </aside>
+  </main>
+
+  <div id="lobbyOverlay" class="overlay">
+    <div class="overlay-card">
+      <h2>Lobby</h2>
+      <p class="hint">Share this room code: <strong id="lobbyCode" class="code">------</strong></p>
+      <div id="lobbyPlayers" class="lobby-players"></div>
+      <p id="lobbyHint" class="hint"></p>
+      <button id="startBtn" class="btn primary hidden">Start Game</button>
+    </div>
+  </div>
+
+  <div id="winOverlay" class="overlay hidden">
+    <div class="overlay-card">
+      <h2 id="winTitle">Winner!</h2>
+      <div class="overlay-actions">
+        <button id="restartBtn" class="btn primary hidden">Play Again</button>
+        <button id="homeBtn" class="btn">Home</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="confettiLayer" class="confetti-layer" aria-hidden="true"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/js/client.js"></script>
+</body>
+</html>
