@@ -1,8 +1,13 @@
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] }
-  ]
-};
+const STUN_SERVERS = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] }
+];
+
+function iceServers() {
+  if (Array.isArray(window.RTC_ICE_SERVERS) && window.RTC_ICE_SERVERS.length) {
+    return window.RTC_ICE_SERVERS;
+  }
+  return STUN_SERVERS;
+}
 
 export class VideoChat {
   constructor(socket) {
@@ -18,6 +23,7 @@ export class VideoChat {
     this.winnerId = null;
     this.onUpdate = null;
     this.audioCtx = null;
+    this.error = null;
 
     this.socket.on('rtc-peers', (payload = {}) => this.onPeers(payload.peers || []));
     this.socket.on('rtc-signal', (payload = {}) => this.onSignal(payload.from, payload.data));
@@ -91,7 +97,10 @@ export class VideoChat {
       stream: null,
       inCall: false,
       cam: false,
-      mic: false
+      mic: false,
+      connState: '',
+      retries: 0,
+      retryTimer: 0
     });
 
     this.paint(player.id);
@@ -104,8 +113,13 @@ export class VideoChat {
     entry.tile.classList.toggle('has-video', entry.inCall && entry.cam);
     entry.tile.classList.toggle('mic-off', entry.inCall && !entry.mic);
     entry.tile.classList.toggle('winner', playerId === this.winnerId);
+    entry.tile.classList.toggle('connecting', entry.connState === 'connecting');
+    entry.tile.classList.toggle('failed', entry.connState === 'failed');
     const status = [];
-    if (!entry.inCall) status.push('no cam');
+    if (entry.connState === 'failed') status.push('connection failed');
+    else if (!entry.inCall && (entry.connState === 'connecting' || entry.connState === 'connected'))
+      status.push('connecting');
+    else if (!entry.inCall) status.push('no cam');
     else if (!entry.cam) status.push('cam off');
     if (entry.inCall && !entry.mic) status.push('mic off');
     entry.statusEl.textContent = status.join(' · ');
@@ -117,6 +131,7 @@ export class VideoChat {
     entry.inCall = this.joined;
     entry.cam = this.joined && this.videoOn;
     entry.mic = this.joined && this.audioOn;
+    entry.connState = this.joined ? 'connected' : '';
     if (!this.joined) entry.video.srcObject = null;
     this.paint(this.viewerId);
   }
@@ -131,7 +146,10 @@ export class VideoChat {
 
   async join() {
     if (this.joined) return true;
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      this.error = 'unsupported';
+      return false;
+    }
 
     try {
       this.localStream = await navigator.mediaDevices.getUserMedia({
@@ -142,10 +160,12 @@ export class VideoChat {
       try {
         this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       } catch {
+        this.error = 'permission';
         return false;
       }
     }
 
+    this.error = null;
     this.joined = true;
     this.videoOn = this.localStream.getVideoTracks().length > 0;
     this.audioOn = this.localStream.getAudioTracks().length > 0;
@@ -281,9 +301,15 @@ export class VideoChat {
   }
 
   makePeer(peerId) {
-    const pc = new RTCPeerConnection(RTC_CONFIG);
+    const pc = new RTCPeerConnection({ iceServers: iceServers() });
     const conn = { pc, pending: [] };
     this.peers.set(peerId, conn);
+    const entry = this.tiles.get(peerId);
+    if (entry) {
+      entry.connState = 'connecting';
+      this.paint(peerId);
+      this.update();
+    }
 
     if (this.localStream) {
       for (const track of this.localStream.getTracks()) pc.addTrack(track, this.localStream);
@@ -311,12 +337,54 @@ export class VideoChat {
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-        this.dropPeer(peerId);
+      const state = pc.connectionState;
+      const tile = this.tiles.get(peerId);
+      if (!tile) return;
+      if (state === 'connected') {
+        tile.connState = 'connected';
+        tile.retries = 0;
+        this.paint(peerId);
+        this.update();
+        return;
       }
+      if (state === 'disconnected') {
+        tile.connState = 'connecting';
+        this.paint(peerId);
+        this.update();
+        return;
+      }
+      if (state === 'failed') {
+        tile.connState = 'failed';
+        this.paint(peerId);
+        this.update();
+        if (this.viewerId && this.viewerId < peerId) this.retryPeer(peerId);
+        return;
+      }
+      if (state === 'closed' && this.peers.get(peerId)?.pc === pc) this.dropPeer(peerId);
     };
 
     return conn;
+  }
+
+  retryPeer(peerId) {
+    if (!this.joined) return;
+    const entry = this.tiles.get(peerId);
+    if (!entry || entry.retries >= 2 || entry.retryTimer) return;
+    entry.retries += 1;
+    this.dropPeer(peerId, true);
+    entry.video.srcObject = null;
+    entry.stream = null;
+    entry.inCall = false;
+    entry.cam = false;
+    entry.mic = false;
+    entry.connState = 'connecting';
+    this.paint(peerId);
+    this.update();
+    entry.retryTimer = setTimeout(() => {
+      entry.retryTimer = 0;
+      if (!this.joined || !this.tiles.has(peerId)) return;
+      this.call(peerId);
+    }, 900);
   }
 
   async onSignal(from, data) {
@@ -408,6 +476,10 @@ export class VideoChat {
     entry.inCall = false;
     entry.cam = false;
     entry.mic = false;
+    entry.connState = '';
+    entry.retries = 0;
+    clearTimeout(entry.retryTimer);
+    entry.retryTimer = 0;
     this.paint(playerId);
     this.update();
   }

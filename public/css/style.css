@@ -572,6 +572,32 @@ input:focus {
   box-shadow: 0 8px 22px rgba(2, 6, 23, 0.35);
 }
 
+.video-tile.connecting {
+  border-style: dashed;
+  animation: tileIn 0.35s ease both, connectPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes connectPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.5), 0 0 16px rgba(99, 102, 241, 0.3);
+  }
+}
+
+.video-tile.failed {
+  border-color: rgba(244, 63, 94, 0.7);
+  box-shadow: 0 0 0 1px rgba(244, 63, 94, 0.35);
+}
+
+.video-tile.failed .video-status {
+  border-color: rgba(244, 63, 94, 0.6);
+  background: rgba(76, 5, 25, 0.8);
+  color: #fecdd3;
+}
+
 .video-tile.speaking {
   border-color: #22c55e;
   box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.55), 0 0 18px rgba(34, 197, 94, 0.35);
@@ -664,6 +690,11 @@ input:focus {
   font-size: 0.68rem;
   line-height: 1.35;
   color: var(--muted);
+}
+
+.video-hint.error {
+  color: #fda4af;
+  font-weight: 700;
 }
 
 .room-info .label {

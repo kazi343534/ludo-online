@@ -211,9 +211,16 @@ function updateVideoControls() {
   els.camBtn.classList.toggle('off', !video.videoOn);
   els.micBtn.textContent = video.audioOn ? 'Mic On' : 'Mic Off';
   els.micBtn.classList.toggle('off', !video.audioOn);
-  els.videoHint.textContent = video.joined
-    ? 'Video chat is live. Toggle camera or mic anytime.'
-    : 'Optional: join video to see and hear each other.';
+  const blocked = !video.joined && !!video.error;
+  els.videoHint.classList.toggle('error', blocked);
+  if (blocked) {
+    els.videoHint.textContent =
+      'Camera/mic blocked. Allow access in your browser, then tap Join again.';
+  } else if (video.joined) {
+    els.videoHint.textContent = 'Video chat is live. Toggle camera or mic anytime.';
+  } else {
+    els.videoHint.textContent = 'Optional: join video to see and hear each other.';
+  }
 }
 
 function render() {
@@ -492,9 +499,7 @@ els.copy.addEventListener('click', async () => {
 els.joinVideoBtn.addEventListener('click', async () => {
   unlock();
   const ok = await video.join();
-  if (!ok) {
-    els.videoHint.textContent = 'Camera/mic unavailable — check browser permissions.';
-  }
+  if (!ok) updateVideoControls();
 });
 
 els.camBtn.addEventListener('click', () => {

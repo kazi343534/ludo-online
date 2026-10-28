@@ -14,6 +14,28 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: '*' } });
 
+app.get('/rtc-config.js', (req, res) => {
+  let servers = [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] }
+  ];
+  const turnUrl = (process.env.TURN_URL || '').trim();
+  const turnUsername = (process.env.TURN_USERNAME || '').trim();
+  const turnCredential = (process.env.TURN_CREDENTIAL || '').trim();
+  if (turnUrl && turnUsername && turnCredential) {
+    servers = [
+      ...servers,
+      {
+        urls: turnUrl.split(',').map((url) => url.trim()).filter(Boolean),
+        username: turnUsername,
+        credential: turnCredential
+      }
+    ];
+  }
+  res.type('application/javascript');
+  res.set('Cache-Control', 'no-store');
+  res.send(`window.RTC_ICE_SERVERS = ${JSON.stringify(servers)};`);
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = new Map();
