@@ -30,6 +30,9 @@ const els = {
   copy: document.getElementById('copyBtn'),
   leave: document.getElementById('leaveBtn'),
   turn: document.getElementById('turnBanner'),
+  turnDot: document.getElementById('turnDot'),
+  turnText: document.getElementById('turnText'),
+  turnClock: document.getElementById('turnClock'),
   dice: document.getElementById('dice'),
   roll: document.getElementById('rollBtn'),
   players: document.getElementById('playersPanel'),
@@ -63,7 +66,9 @@ const els = {
 let state = null;
 let prevState = null;
 let lastSeq = null;
-let diceAnimating = false;
+let turnDeadlineLocal = 0;
+let diceAnim = null;
+let dicePopTimer = 0;
 
 initBoard(els.board, handleTokenClick);
 
@@ -76,6 +81,8 @@ video.mount(els.videoTiles);
 video.onUpdate = updateVideoControls;
 
 buildAdminControls();
+
+setInterval(updateTurnClock, 250);
 
 document.addEventListener('pointerdown', unlock, { once: true });
 window.addEventListener('pagehide', () => video.leave());
@@ -93,6 +100,8 @@ socket.on('connect', () => {
   });
 });
 
+socket.on('disconnect', () => flash('Connection lost — reconnecting…'));
+
 socket.on('state', (next) => {
   state = next;
   render();
@@ -107,7 +116,20 @@ socket.on('event', (payload) => {
     floatText('THREE SIXES — TURN LOST!', 'red');
     return;
   }
+  if (payload.type === 'auto-roll') {
+    flash(`${nameOf(payload.by)} auto-rolled ${payload.dice}`);
+    return;
+  }
+  if (payload.type === 'skip') {
+    flash(`${nameOf(payload.by)} was skipped`);
+    return;
+  }
+  if (payload.type === 'pass') {
+    flash(`${nameOf(payload.by)} had no moves`);
+    return;
+  }
   if (payload.type !== 'move') return;
+  if (payload.auto) flash(`${nameOf(payload.by)} auto-moved`);
   sfx.move();
   if (payload.entered) sfx.enter();
   if (payload.captured > 0) {
@@ -227,8 +249,14 @@ function render() {
   if (!state) return;
   const previous = prevState;
   prevState = state.state;
+  turnDeadlineLocal =
+    state.state === 'playing' && state.turnDeadline
+      ? Date.now() + Math.max(0, state.turnDeadline - state.serverNow)
+      : 0;
   els.roomCode.textContent = state.code;
   els.lobbyCode.textContent = state.code;
+  const current = state.players.find((p) => p.id === state.turnPlayerId);
+  els.board.dataset.turn = state.state === 'playing' && current ? current.color : '';
   renderLobby();
   renderPlayers();
   renderTurn();
@@ -247,6 +275,7 @@ function render() {
   video.sync(state.players, state.you);
   video.setWinner(state.state === 'finished' ? state.winnerId : null);
   updateVideoControls();
+  updateTurnClock();
   if (state.state === 'finished' && previous !== 'finished') {
     sfx.win();
     confetti();
@@ -301,6 +330,7 @@ function renderPlayers() {
   for (const p of state.players) {
     const row = document.createElement('div');
     row.className = 'player-row';
+    if (!p.connected) row.classList.add('offline');
     if (state.state === 'playing' && state.turnPlayerId === p.id) row.classList.add('turn');
 
     const dot = document.createElement('span');
@@ -335,26 +365,28 @@ function renderPlayers() {
 
 function renderTurn() {
   const mine = state.turnPlayerId === state.you;
+  const current = state.players.find((p) => p.id === state.turnPlayerId);
+  const active = state.state === 'playing' && current;
+  els.turnDot.className = active ? `turn-dot ${current.color}` : 'turn-dot hidden';
 
   if (state.state === 'lobby') {
     els.turn.className = 'turn-banner';
-    els.turn.textContent = 'Lobby — waiting to start';
+    els.turnText.textContent = 'Lobby — waiting to start';
   } else if (state.state === 'finished') {
     els.turn.className = 'turn-banner';
-    els.turn.textContent = `${winnerName()} wins the game!`;
+    els.turnText.textContent = `${winnerName()} wins the game!`;
   } else {
     els.turn.className = mine ? 'turn-banner mine' : 'turn-banner';
     if (mine) {
       if (state.diceRolled) {
-        els.turn.textContent = state.pendingMoves.length
+        els.turnText.textContent = state.pendingMoves.length
           ? 'Your move — tap a glowing token'
           : 'No valid moves — passing…';
       } else {
-        els.turn.textContent = 'Your turn — roll the dice';
+        els.turnText.textContent = 'Your turn — roll the dice';
       }
     } else {
-      const current = state.players.find((p) => p.id === state.turnPlayerId);
-      els.turn.textContent = `${current ? current.name : 'Player'}'s turn`;
+      els.turnText.textContent = `${current ? current.name : 'Player'}'s turn`;
     }
   }
 
@@ -365,12 +397,24 @@ function renderTurn() {
   els.roll.disabled = !canRoll;
 }
 
+function updateTurnClock() {
+  if (!state || state.state !== 'playing' || !turnDeadlineLocal) {
+    els.turnClock.classList.add('hidden');
+    return;
+  }
+  const left = Math.max(0, Math.ceil((turnDeadlineLocal - Date.now()) / 1000));
+  els.turnClock.textContent = `${left}s`;
+  els.turnClock.classList.remove('hidden');
+  els.turnClock.classList.toggle('urgent', left <= 5);
+}
+
 function setDiceFace(value) {
   els.dice.dataset.value = String(value);
 }
 
 function renderDice() {
   if (state.dice == null) {
+    lastSeq = state.diceSeq || 0;
     setDiceFace(1);
     return;
   }
@@ -383,31 +427,34 @@ function renderDice() {
     lastSeq = state.diceSeq;
     if (state.state === 'playing') sfx.dice();
     animateDice(state.dice);
-  } else if (!diceAnimating) {
+  } else if (!diceAnim) {
     setDiceFace(state.dice);
   }
 }
 
 function animateDice(finalValue) {
-  if (diceAnimating) {
+  if (diceAnim) {
+    diceAnim.final = finalValue;
     setDiceFace(finalValue);
     return;
   }
-  diceAnimating = true;
+  const anim = { final: finalValue, start: performance.now(), timer: 0 };
+  diceAnim = anim;
   els.dice.classList.add('rolling');
-  let ticks = 0;
-  const timer = setInterval(() => {
-    ticks += 1;
-    setDiceFace(1 + Math.floor(Math.random() * 6));
-    if (ticks >= 8) {
-      clearInterval(timer);
-      diceAnimating = false;
+  const tick = () => {
+    if (performance.now() - anim.start >= 540) {
+      diceAnim = null;
       els.dice.classList.remove('rolling');
-      setDiceFace(finalValue);
+      setDiceFace(anim.final);
       els.dice.classList.add('pop');
-      setTimeout(() => els.dice.classList.remove('pop'), 320);
+      clearTimeout(dicePopTimer);
+      dicePopTimer = setTimeout(() => els.dice.classList.remove('pop'), 320);
+      return;
     }
-  }, 65);
+    setDiceFace(1 + Math.floor(Math.random() * 6));
+    anim.timer = setTimeout(tick, 65);
+  };
+  tick();
 }
 
 function buildAdminControls() {

@@ -39,6 +39,9 @@ app.get('/rtc-config.js', (req, res) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = new Map();
+const TURN_ROLL_MS = Number(process.env.TURN_ROLL_MS) || 30000;
+const TURN_MOVE_MS = Number(process.env.TURN_MOVE_MS) || 15000;
+const TURN_OFFLINE_MS = Number(process.env.TURN_OFFLINE_MS) || 6000;
 
 function makeCode() {
   let code;
@@ -99,7 +102,9 @@ function buildState(room, viewerId) {
     tokens: game ? game.tokens : null,
     captures: game ? game.captures : null,
     winnerId: game ? game.winnerId : null,
-    finished: game ? game.finished : false
+    finished: game ? game.finished : false,
+    turnDeadline: room.turnDeadline || 0,
+    serverNow: Date.now()
   };
   if (me && me.id === room.adminId) {
     state.force = { enabled: me.forceMode, value: me.forceValue };
@@ -108,6 +113,7 @@ function buildState(room, viewerId) {
 }
 
 function broadcast(room) {
+  scheduleTurnTimer(room);
   for (const p of room.players) {
     if (p.socketId) io.to(p.socketId).emit('state', buildState(room, p.id));
   }
@@ -121,10 +127,95 @@ function context(socket) {
   return { room, player };
 }
 
-function clearRoom(room) {
+function resetTimers(room) {
   for (const t of room.timers) clearTimeout(t);
   room.timers = [];
+  clearTurnTimer(room);
+}
+
+function clearRoom(room) {
+  resetTimers(room);
   rooms.delete(room.code);
+}
+
+function clearTurnTimer(room) {
+  if (room.turnTimer) clearTimeout(room.turnTimer);
+  room.turnTimer = null;
+  room.turnDeadline = 0;
+}
+
+function scheduleTurnTimer(room) {
+  clearTurnTimer(room);
+  if (room.state !== 'playing' || !room.game || room.game.finished) return;
+  const current = room.players.find((p) => p.id === room.game.currentPlayerId);
+  if (!current) return;
+  let delay = TURN_ROLL_MS;
+  if (!current.connected) delay = TURN_OFFLINE_MS;
+  else if (room.game.diceRolled) delay = TURN_MOVE_MS;
+  room.turnDeadline = Date.now() + delay;
+  room.turnTimer = setTimeout(() => {
+    room.turnTimer = null;
+    room.turnDeadline = 0;
+    handleTurnTimeout(room);
+  }, delay);
+}
+
+function handleTurnTimeout(room) {
+  if (room.state !== 'playing' || !room.game || room.game.finished) return;
+  const player = room.players.find((p) => p.id === room.game.currentPlayerId);
+  if (!player) {
+    broadcast(room);
+    return;
+  }
+
+  if (!player.connected) {
+    room.game.advanceTurn();
+    broadcast(room);
+    io.to(room.code).emit('event', { type: 'skip', by: player.id });
+    return;
+  }
+
+  if (!room.game.diceRolled) {
+    const value = crypto.randomInt(1, 7);
+    const result = room.game.roll(player.id, value);
+    if (result.error) {
+      broadcast(room);
+      return;
+    }
+    broadcast(room);
+    io.to(room.code).emit('event', { type: 'auto-roll', by: player.id, dice: value });
+    if (result.forfeit || result.moves.length === 0) scheduleAdvance(room);
+    return;
+  }
+
+  const moves = room.game.availableMoves;
+  if (!moves.length) {
+    room.game.advanceTurn();
+    broadcast(room);
+    io.to(room.code).emit('event', { type: 'pass', by: player.id });
+    return;
+  }
+  const result = performMove(room, player, moves[0], true);
+  if (result.error) broadcast(room);
+}
+
+function performMove(room, player, tokenIndex, auto = false) {
+  const result = room.game.applyMove(player.id, tokenIndex);
+  if (result.error) return result;
+  if (result.finished) room.state = 'finished';
+  broadcast(room);
+  io.to(room.code).emit('event', {
+    type: 'move',
+    by: player.id,
+    dice: room.game.dice,
+    entered: result.entered,
+    extraTurn: result.extraTurn,
+    captured: result.captured.length,
+    victims: result.captured.map((c) => c.playerId),
+    finished: result.finished,
+    auto
+  });
+  return result;
 }
 
 function scheduleAdvance(room) {
@@ -132,8 +223,10 @@ function scheduleAdvance(room) {
     room.timers = room.timers.filter((t) => t !== timer);
     if (room.state !== 'playing' || !room.game) return;
     if (!room.game.diceRolled) return;
+    const playerId = room.game.currentPlayerId;
     room.game.advanceTurn();
     broadcast(room);
+    io.to(room.code).emit('event', { type: 'pass', by: playerId });
   }, 1600);
   room.timers.push(timer);
 }
@@ -218,6 +311,7 @@ io.on('connection', (socket) => {
     if (player.id !== room.adminId) return;
     if (room.state !== 'lobby') return;
     if (room.players.length < 2) return;
+    resetTimers(room);
     room.state = 'playing';
     room.game = new Game(room.players);
     broadcast(room);
@@ -246,7 +340,10 @@ io.on('connection', (socket) => {
     }
 
     const result = room.game.roll(player.id, value);
-    if (result.error) return;
+    if (result.error) {
+      if (player.socketId) io.to(player.socketId).emit('state', buildState(room, player.id));
+      return;
+    }
     broadcast(room);
     if (result.forfeit) {
       io.to(room.code).emit('event', { type: 'forfeit', by: player.id });
@@ -261,20 +358,10 @@ io.on('connection', (socket) => {
     if (!ctx) return;
     const { room, player } = ctx;
     if (room.state !== 'playing' || !room.game) return;
-    const result = room.game.applyMove(player.id, payload.tokenIndex);
-    if (result.error) return;
-    if (result.finished) room.state = 'finished';
-    broadcast(room);
-    io.to(room.code).emit('event', {
-      type: 'move',
-      by: player.id,
-      dice: room.game.dice,
-      entered: result.entered,
-      extraTurn: result.extraTurn,
-      captured: result.captured.length,
-      victims: result.captured.map((c) => c.playerId),
-      finished: result.finished
-    });
+    const result = performMove(room, player, payload.tokenIndex);
+    if (result.error && player.socketId) {
+      io.to(player.socketId).emit('state', buildState(room, player.id));
+    }
   });
 
   const REACTIONS = new Set(['LOL!', 'WOW!', 'NO!', 'GG!']);
@@ -354,6 +441,7 @@ io.on('connection', (socket) => {
     const { room, player } = ctx;
     if (player.id !== room.adminId) return;
     if (room.state !== 'finished') return;
+    resetTimers(room);
     room.game = new Game(room.players);
     room.state = 'playing';
     broadcast(room);
