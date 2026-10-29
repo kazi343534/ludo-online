@@ -45,16 +45,51 @@
 
     <aside class="side">
       <div id="turnBanner" class="turn-banner">
-        <span id="turnDot" class="turn-dot hidden"></span>
-        <span id="turnText" class="turn-text">Connecting…</span>
-        <span id="turnClock" class="turn-clock hidden">30s</span>
+        <div class="turn-trough">
+          <span class="turn-fill" aria-hidden="true"></span>
+          <span id="turnDot" class="turn-dot hidden"></span>
+          <span id="turnText" class="turn-text">Connecting…</span>
+          <span id="turnClock" class="turn-clock hidden">30s</span>
+        </div>
+        <span class="turn-hourglass" aria-hidden="true">
+          <svg viewBox="0 0 24 38" width="26" height="40">
+            <defs>
+              <linearGradient id="hgFrame" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#fff8cf" />
+                <stop offset="0.42" stop-color="#ffd700" />
+                <stop offset="0.7" stop-color="#8a6a1a" />
+                <stop offset="1" stop-color="#eef5ff" />
+              </linearGradient>
+              <linearGradient id="hgSand" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#d8feff" />
+                <stop offset="0.55" stop-color="#00f6ff" />
+                <stop offset="1" stop-color="#007c96" />
+              </linearGradient>
+            </defs>
+            <path d="M4.5 3.5h15M4.5 34.5h15" stroke="url(#hgFrame)" stroke-width="3.2" stroke-linecap="round" />
+            <path d="M6 5c0 6 6 8 6 14s-6 8-6 14h12c0-6-6-8-6-14s6-8 6-14z" fill="rgba(0,246,255,0.08)" stroke="url(#hgFrame)" stroke-width="1.7" stroke-linejoin="round" />
+            <path d="M8.2 6.6h7.6c0 4.2-3.8 6-3.8 9.2s3.8 5 3.8 9.2H8.2c0-4.2 3.8-6 3.8-9.2s-3.8-5-3.8-9.2z" fill="url(#hgSand)" opacity="0.9" />
+            <path d="M9.4 31.4h5.2L12 26.6z" fill="#b9fdff" />
+            <circle cx="12" cy="18.4" r="1.2" fill="#ffffff" />
+          </svg>
+        </span>
       </div>
 
       <div class="dice-area">
-        <div id="dice" class="dice" data-value="1">
-          <div class="pip"></div><div class="pip"></div><div class="pip"></div>
-          <div class="pip"></div><div class="pip"></div><div class="pip"></div>
-          <div class="pip"></div><div class="pip"></div><div class="pip"></div>
+        <div id="dice" class="dice dice-roll-box" data-value="5" role="img" aria-label="Dice showing 5">
+          <div class="dice-cube">
+            <span class="dice-edge dice-edge-cyan" aria-hidden="true"></span>
+            <span class="dice-edge dice-edge-magenta" aria-hidden="true"></span>
+            <div class="dice-face">
+              <div id="dicePips" class="dice-pips" aria-hidden="true">
+                <span class="dice-pip pip-1"></span>
+                <span class="dice-pip pip-3"></span>
+                <span class="dice-pip pip-5"></span>
+                <span class="dice-pip pip-7"></span>
+                <span class="dice-pip pip-9"></span>
+              </div>
+            </div>
+          </div>
         </div>
         <button id="rollBtn" class="btn primary big" disabled>Roll Dice</button>
       </div>
@@ -62,13 +97,17 @@
       <div id="playersPanel" class="players-panel"></div>
 
       <div id="reactionBar" class="reaction-bar" aria-label="Quick reactions">
-        <button type="button" data-text="LOL!">LOL!</button>
-        <button type="button" data-text="WOW!">WOW!</button>
-        <button type="button" data-text="NO!">NO!</button>
-        <button type="button" data-text="GG!">GG!</button>
+        <button type="button" data-text="LOL!">LOL!<span class="emoji" aria-hidden="true">😂</span></button>
+        <button type="button" data-text="WOW!">WOW!<span class="emoji" aria-hidden="true">😮</span></button>
+        <button type="button" data-text="NO!">NO!<span class="emoji" aria-hidden="true">😤</span></button>
+        <button type="button" data-text="GG!">GG!<span class="emoji" aria-hidden="true">🎉</span></button>
       </div>
 
       <div id="adminPanel" class="admin-panel hidden">
+        <span class="admin-corner tl"></span>
+        <span class="admin-corner tr"></span>
+        <span class="admin-corner bl"></span>
+        <span class="admin-corner br"></span>
         <div class="admin-head">
           <span>Admin Dice Control</span>
           <label class="switch">
@@ -76,7 +115,7 @@
             <span class="slider"></span>
           </label>
         </div>
-        <p class="admin-hint">When ON, your next roll uses the number you pick. Other players cannot see this.</p>
+        <p class="admin-hint">When ON, your next roll uses the number you pick.<br>Other players cannot see this.</p>
         <div id="forceNumbers" class="force-numbers"></div>
         <div id="forceStatus" class="admin-status">Force mode OFF</div>
       </div>

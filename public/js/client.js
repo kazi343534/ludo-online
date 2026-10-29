@@ -33,7 +33,9 @@ const els = {
   turnDot: document.getElementById('turnDot'),
   turnText: document.getElementById('turnText'),
   turnClock: document.getElementById('turnClock'),
+  turnFill: document.querySelector('#turnBanner .turn-fill'),
   dice: document.getElementById('dice'),
+  dicePips: document.getElementById('dicePips'),
   roll: document.getElementById('rollBtn'),
   players: document.getElementById('playersPanel'),
   admin: document.getElementById('adminPanel'),
@@ -67,6 +69,8 @@ let state = null;
 let prevState = null;
 let lastSeq = null;
 let turnDeadlineLocal = 0;
+let turnDeadlineTotal = 0;
+let lastDeadline = 0;
 let diceAnim = null;
 let dicePopTimer = 0;
 
@@ -249,10 +253,12 @@ function render() {
   if (!state) return;
   const previous = prevState;
   prevState = state.state;
-  turnDeadlineLocal =
-    state.state === 'playing' && state.turnDeadline
-      ? Date.now() + Math.max(0, state.turnDeadline - state.serverNow)
-      : 0;
+  const deadline = state.state === 'playing' ? state.turnDeadline || 0 : 0;
+  if (deadline !== lastDeadline) {
+    lastDeadline = deadline;
+    turnDeadlineTotal = deadline ? Math.max(0, deadline - state.serverNow) : 0;
+  }
+  turnDeadlineLocal = deadline ? Date.now() + Math.max(0, deadline - state.serverNow) : 0;
   els.roomCode.textContent = state.code;
   els.lobbyCode.textContent = state.code;
   const current = state.players.find((p) => p.id === state.turnPlayerId);
@@ -330,6 +336,7 @@ function renderPlayers() {
   for (const p of state.players) {
     const row = document.createElement('div');
     row.className = 'player-row';
+    if (p.isAdmin) row.classList.add('is-admin');
     if (!p.connected) row.classList.add('offline');
     if (state.state === 'playing' && state.turnPlayerId === p.id) row.classList.add('turn');
 
@@ -352,7 +359,7 @@ function renderPlayers() {
     const eaten = state.captures ? state.captures[p.id] || 0 : 0;
     const sub = document.createElement('div');
     sub.className = 'player-sub';
-    sub.textContent = `${homeCount}/4 home · ate ${eaten}`;
+    sub.textContent = `${homeCount}/4 Home • ⚔️ Ate ${eaten}`;
     info.appendChild(sub);
 
     row.appendChild(info);
@@ -376,7 +383,7 @@ function renderTurn() {
     els.turn.className = 'turn-banner';
     els.turnText.textContent = `${winnerName()} wins the game!`;
   } else {
-    els.turn.className = mine ? 'turn-banner mine' : 'turn-banner';
+    els.turn.className = mine ? 'turn-banner mine live' : 'turn-banner live';
     if (mine) {
       if (state.diceRolled) {
         els.turnText.textContent = state.pendingMoves.length
@@ -400,22 +407,44 @@ function renderTurn() {
 function updateTurnClock() {
   if (!state || state.state !== 'playing' || !turnDeadlineLocal) {
     els.turnClock.classList.add('hidden');
+    if (els.turnFill) els.turnFill.style.width = '0%';
+    els.turn.classList.remove('urgent');
     return;
   }
-  const left = Math.max(0, Math.ceil((turnDeadlineLocal - Date.now()) / 1000));
+  const remaining = Math.max(0, turnDeadlineLocal - Date.now());
+  const left = Math.ceil(remaining / 1000);
+  const total = turnDeadlineTotal || remaining || 1;
+  const pct = Math.max(0, Math.min(100, (remaining / total) * 100));
+  if (els.turnFill) els.turnFill.style.width = `${pct}%`;
   els.turnClock.textContent = `${left}s`;
   els.turnClock.classList.remove('hidden');
   els.turnClock.classList.toggle('urgent', left <= 5);
+  els.turn.classList.toggle('urgent', left <= 5);
 }
 
+const DICE_PIPS = {
+  1: [5],
+  2: [1, 9],
+  3: [1, 5, 9],
+  4: [1, 3, 7, 9],
+  5: [1, 3, 5, 7, 9],
+  6: [1, 3, 4, 6, 7, 9]
+};
+
 function setDiceFace(value) {
-  els.dice.dataset.value = String(value);
+  const face = Math.max(1, Math.min(6, Number(value) || 1));
+  els.dice.dataset.value = String(face);
+  els.dice.setAttribute('aria-label', `Dice showing ${face}`);
+  if (!els.dicePips) return;
+  els.dicePips.innerHTML = (DICE_PIPS[face] || DICE_PIPS[1])
+    .map((cell) => `<span class="dice-pip pip-${cell}" aria-hidden="true"></span>`)
+    .join('');
 }
 
 function renderDice() {
   if (state.dice == null) {
     lastSeq = state.diceSeq || 0;
-    setDiceFace(1);
+    setDiceFace(5);
     return;
   }
   if (lastSeq === null) {

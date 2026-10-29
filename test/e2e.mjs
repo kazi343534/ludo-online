@@ -91,7 +91,7 @@ try {
 
   assert.match(
     await admin.$eval('#playersPanel .player-sub', (el) => el.textContent),
-    /ate 0/,
+    /Ate 0/,
     'capture counter is visible'
   );
 

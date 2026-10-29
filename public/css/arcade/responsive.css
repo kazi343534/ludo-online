@@ -1,0 +1,302 @@
+/* ==========================================================================
+   LUDO ONLINE — Neon Arcade theme: responsive rules
+   ========================================================================== */
+
+@media (max-width: 1100px) {
+  .game-main {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 12px 16px;
+    padding: 14px 16px 18px;
+  }
+
+  .board-wrap {
+    width: min(100%, calc(100vh - 148px), 680px);
+  }
+
+  .dice-area {
+    gap: 12px;
+    padding: 14px;
+  }
+}
+
+@media (max-width: 900px) {
+  .game-body {
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    height: 58px;
+  }
+
+  .game-main {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 12px 12px 22px;
+    gap: 12px;
+  }
+
+  .video-card {
+    order: 1;
+  }
+
+  .board-wrap {
+    order: 2;
+  }
+
+  .side {
+    order: 3;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .video-tiles {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .video-tile {
+    flex: 0 0 128px;
+    width: 128px;
+    height: 80px;
+    aspect-ratio: auto;
+  }
+
+  .video-controls {
+    flex-wrap: wrap;
+  }
+
+  .video-join {
+    width: auto;
+    flex: 1;
+  }
+
+  .video-controls .mini-btn {
+    flex: 0 0 auto;
+    padding: 8px 10px;
+  }
+
+  .board-wrap {
+    width: min(94vw, 58vh, 560px);
+    padding: 12px;
+  }
+
+  .dice-area {
+    padding: 13px;
+  }
+
+  .players-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .player-row.is-admin {
+    padding-top: 17px;
+  }
+
+  .admin-panel {
+    padding: 14px;
+  }
+
+  .force-numbers {
+    gap: 8px;
+  }
+
+  .reaction-bar {
+    gap: 8px;
+  }
+
+  .reaction-bar button {
+    padding: 6px 7px;
+    font-size: 0.5rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    height: 54px;
+    padding: 0 12px;
+    gap: 8px;
+  }
+
+  .topbar-left {
+    gap: 10px;
+  }
+
+  .brand {
+    padding-right: 0;
+  }
+
+  .brand::after {
+    display: none;
+  }
+
+  .brand-name {
+    display: none;
+  }
+
+  .brand-badge {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+  }
+
+  .room-info {
+    padding: 5px 9px;
+    gap: 7px;
+  }
+
+  .room-info .label {
+    display: none;
+  }
+
+  .code {
+    font-size: 0.92rem;
+  }
+
+  #copyBtn {
+    padding: 4px 8px;
+    font-size: 0.54rem;
+  }
+
+  #leaveBtn {
+    padding: 8px 12px;
+    font-size: 0.58rem;
+  }
+
+  .video-hint {
+    display: none;
+  }
+
+  .game-main {
+    padding: 10px 10px 20px;
+    gap: 10px;
+  }
+
+  .board-wrap {
+    width: min(95vw, 60vh, 480px);
+    padding: 9px;
+    border-radius: 26px;
+  }
+
+  .turn-trough {
+    height: 40px;
+  }
+
+  .turn-text {
+    font-size: 0.6rem;
+  }
+
+  .dice-area {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .dice-area .btn {
+    font-size: 0.72rem;
+    padding: 12px 14px;
+  }
+
+  .players-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .player-row.is-admin {
+    padding-top: 16px;
+  }
+
+  .reaction-bar .emoji {
+    font-size: 1.3rem;
+  }
+
+  .admin-head {
+    font-size: 0.66rem;
+  }
+
+  .overlay-card {
+    padding: 20px;
+  }
+
+  .overlay-card h2 {
+    font-size: 1.15rem;
+  }
+
+  #winOverlay .overlay-card h2 {
+    font-size: 1.45rem;
+  }
+}
+
+@media (max-height: 820px) and (min-width: 901px) {
+  .topbar {
+    height: 54px;
+  }
+
+  .game-main {
+    gap: 10px 16px;
+    padding: 10px 16px 14px;
+  }
+
+  .video-card {
+    padding: 10px;
+  }
+
+  .video-tiles {
+    gap: 6px;
+  }
+
+  .video-controls {
+    margin-top: 8px;
+  }
+
+  .video-hint {
+    display: none;
+  }
+
+  .side {
+    gap: 9px;
+  }
+
+  .board-wrap {
+    width: min(100%, calc(100vh - 128px), 720px);
+    padding: 11px;
+  }
+
+  .dice-area {
+    padding: 11px 12px;
+  }
+
+  .turn-trough {
+    height: 40px;
+  }
+
+  .player-row {
+    padding: 7px 10px;
+  }
+
+  .reaction-bar button {
+    padding: 5px 6px;
+  }
+
+  .reaction-bar .emoji {
+    font-size: 1.02rem;
+  }
+
+  .admin-panel {
+    padding: 10px;
+  }
+
+  .admin-hint {
+    margin: 6px 0 8px;
+  }
+}

@@ -69,6 +69,8 @@ export class VideoChat {
     tile.className = `video-tile vt-${player.color}`;
     tile.dataset.player = player.id;
     if (isSelf) tile.classList.add('self');
+    tile.classList.add('enter');
+    setTimeout(() => tile.classList.remove('enter'), 420);
 
     const video = document.createElement('video');
     video.autoplay = true;
