@@ -276,18 +276,22 @@
 
 .dice,
 .dice-roll-box {
-  position: relative;
-  width: 68px;
-  height: 68px;
-  flex: 0 0 68px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative !important;
+  width: 56px !important;
+  min-width: 56px !important;
+  height: 56px !important;
+  min-height: 56px !important;
+  aspect-ratio: 1 / 1 !important;
+  flex: 0 0 56px !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   padding: 0;
   border: 0;
   background: none;
   box-shadow: none;
+  box-sizing: border-box;
   isolation: isolate;
 }
 
@@ -336,7 +340,10 @@
 .dice-cube {
   position: relative;
   width: 54px;
+  min-width: 54px;
   height: 54px;
+  min-height: 54px;
+  flex: 0 0 54px;
   z-index: 1;
   transform: perspective(300px) rotateX(10deg) rotateY(-12deg);
   transform-style: preserve-3d;
@@ -372,8 +379,18 @@
   left: 3px;
   top: 3px;
   z-index: 2;
-  width: 48px;
-  height: 48px;
+  width: 48px !important;
+  min-width: 48px !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  aspect-ratio: 1 / 1 !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  grid-template-rows: repeat(3, 1fr) !important;
+  padding: 6px !important;
+  gap: 2px !important;
+  box-sizing: border-box !important;
+  place-items: center;
   border-radius: 10px;
   border: 2px solid #ffffff;
   background: linear-gradient(145deg, #ffffff 0%, #e6f7ff 65%, #b3ecff 100%);
@@ -384,14 +401,7 @@
 }
 
 .dice-pips {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  padding: 7px;
-  gap: 3px;
-  place-items: center;
+  display: contents !important;
 }
 
 .dice-pip {
