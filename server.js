@@ -73,7 +73,9 @@ function newPlayer(id, name, color) {
     forceMode: false,
     forceValue: 6,
     lastReaction: 0,
-    rtc: false
+    rtc: false,
+    mediaVideo: false,
+    mediaAudio: false
   };
 }
 
@@ -282,6 +284,8 @@ io.on('connection', (socket) => {
       }
       if (player.rtc) {
         player.rtc = false;
+        player.mediaVideo = false;
+        player.mediaAudio = false;
         socket.to(room.code).emit('rtc-peer-left', { playerId: player.id });
       }
       player.socketId = socket.id;
@@ -407,11 +411,38 @@ io.on('connection', (socket) => {
     if (!ctx) return;
     const { room, player } = ctx;
     if (!player.rtc) return;
+    player.mediaVideo = !!payload.video;
+    player.mediaAudio = !!payload.audio;
     socket.to(room.code).emit('rtc-media', {
       playerId: player.id,
-      video: !!payload.video,
-      audio: !!payload.audio
+      video: player.mediaVideo,
+      audio: player.mediaAudio
     });
+  });
+
+  socket.on('rtc-status', () => {
+    const ctx = context(socket);
+    if (!ctx) return;
+    const { room, player } = ctx;
+    const players = room.players
+      .filter((p) => p.id !== player.id && p.rtc && (p.mediaVideo || p.mediaAudio))
+      .map((p) => ({
+        playerId: p.id,
+        video: p.mediaVideo,
+        audio: p.mediaAudio
+      }));
+    socket.emit('rtc-status', { players });
+  });
+
+  socket.on('rtc-watch', (payload = {}) => {
+    const ctx = context(socket);
+    if (!ctx) return;
+    const { room, player } = ctx;
+    const target = room.players.find((p) => p.id === payload.to);
+    if (!target || target.id === player.id || !target.rtc || !target.socketId) return;
+    if (!target.mediaVideo && !target.mediaAudio) return;
+    player.rtc = true;
+    io.to(target.socketId).emit('rtc-watch-request', { playerId: player.id });
   });
 
   socket.on('rtc-bye', () => {
@@ -420,6 +451,8 @@ io.on('connection', (socket) => {
     const { room, player } = ctx;
     if (!player.rtc) return;
     player.rtc = false;
+    player.mediaVideo = false;
+    player.mediaAudio = false;
     socket.to(room.code).emit('rtc-peer-left', { playerId: player.id });
   });
 
@@ -453,6 +486,8 @@ io.on('connection', (socket) => {
     const { room, player } = ctx;
     if (player.rtc) {
       player.rtc = false;
+      player.mediaVideo = false;
+      player.mediaAudio = false;
       io.to(room.code).emit('rtc-peer-left', { playerId: player.id });
     }
     socket.leave(room.code);
@@ -483,6 +518,8 @@ io.on('connection', (socket) => {
     player.socketId = null;
     if (player.rtc) {
       player.rtc = false;
+      player.mediaVideo = false;
+      player.mediaAudio = false;
       io.to(room.code).emit('rtc-peer-left', { playerId: player.id });
     }
     broadcast(room);

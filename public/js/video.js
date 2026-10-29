@@ -18,16 +18,21 @@ export class VideoChat {
     this.localStream = null;
     this.viewerId = null;
     this.joined = false;
+    this.signaling = false;
     this.videoOn = false;
     this.audioOn = false;
     this.winnerId = null;
     this.onUpdate = null;
     this.audioCtx = null;
     this.error = null;
+    this.remoteMedia = new Map();
+    this.watchPending = new Set();
 
     this.socket.on('rtc-peers', (payload = {}) => this.onPeers(payload.peers || []));
     this.socket.on('rtc-signal', (payload = {}) => this.onSignal(payload.from, payload.data));
     this.socket.on('rtc-media', (payload = {}) => this.onMedia(payload));
+    this.socket.on('rtc-status', (payload = {}) => this.onStatus(payload.players || []));
+    this.socket.on('rtc-watch-request', (payload = {}) => this.onWatchRequest(payload.playerId));
     this.socket.on('rtc-peer-joined', (payload = {}) => this.onPeerJoined(payload.playerId));
     this.socket.on('rtc-peer-left', (payload = {}) => this.dropPeer(payload.playerId));
   }
@@ -58,6 +63,15 @@ export class VideoChat {
       entry.tile.remove();
       this.tiles.delete(id);
       this.dropPeer(id, true);
+    }
+
+    for (const [id, media] of this.remoteMedia) {
+      const entry = this.tiles.get(id);
+      if (!entry) continue;
+      entry.cam = !!media.video;
+      entry.mic = !!media.audio;
+      if (media.video || media.audio) this.watchPeer(id);
+      this.paint(id);
     }
 
     if (this.joined && this.localStream) this.attachSelf();
@@ -98,11 +112,13 @@ export class VideoChat {
       statusEl: status,
       stream: null,
       inCall: false,
+      watching: false,
       cam: false,
       mic: false,
       connState: '',
       retries: 0,
-      retryTimer: 0
+      retryTimer: 0,
+      watchTimer: 0
     });
 
     this.paint(player.id);
@@ -112,6 +128,7 @@ export class VideoChat {
     const entry = playerId ? this.tiles.get(playerId) : null;
     if (!entry) return;
     entry.tile.classList.toggle('in-call', entry.inCall);
+    entry.tile.classList.toggle('watching', entry.watching);
     entry.tile.classList.toggle('has-video', entry.inCall && entry.cam);
     entry.tile.classList.toggle('mic-off', entry.inCall && !entry.mic);
     entry.tile.classList.toggle('winner', playerId === this.winnerId);
@@ -119,6 +136,7 @@ export class VideoChat {
     entry.tile.classList.toggle('failed', entry.connState === 'failed');
     const status = [];
     if (entry.connState === 'failed') status.push('connection failed');
+    else if (entry.watching && !entry.inCall) status.push('watching');
     else if (!entry.inCall && (entry.connState === 'connecting' || entry.connState === 'connected'))
       status.push('connecting');
     else if (!entry.inCall) status.push('no cam');
@@ -167,8 +185,13 @@ export class VideoChat {
       }
     }
 
+    for (const id of [...this.peers.keys()]) this.dropPeer(id);
+    this.watchPending.clear();
+    if (this.signaling) this.socket.emit('rtc-bye');
+
     this.error = null;
     this.joined = true;
+    this.signaling = true;
     this.videoOn = this.localStream.getVideoTracks().length > 0;
     this.audioOn = this.localStream.getAudioTracks().length > 0;
     this.attachSelf();
@@ -177,6 +200,68 @@ export class VideoChat {
     this.emitMedia();
     this.update();
     return true;
+  }
+
+  refresh() {
+    if (!this.container || this.joined) return;
+    for (const id of [...this.peers.keys()]) this.dropPeer(id);
+    this.watchPending.clear();
+    if (this.signaling) this.socket.emit('rtc-bye');
+    this.signaling = false;
+    this.socket.emit('rtc-status');
+  }
+
+  onStatus(players) {
+    if (this.joined) return;
+    this.remoteMedia = new Map();
+    for (const info of players) {
+      if (!info || !info.playerId || info.playerId === this.viewerId) continue;
+      this.remoteMedia.set(info.playerId, {
+        video: !!info.video,
+        audio: !!info.audio
+      });
+    }
+    for (const [id, entry] of this.tiles) {
+      if (id === this.viewerId) continue;
+      const media = this.remoteMedia.get(id);
+      entry.cam = media ? media.video : false;
+      entry.mic = media ? media.audio : false;
+      if (media && (media.video || media.audio)) this.watchPeer(id);
+      this.paint(id);
+    }
+    this.update();
+  }
+
+  watchPeer(playerId) {
+    if (!playerId || playerId === this.viewerId || this.joined) return;
+    const entry = this.tiles.get(playerId);
+    if (!entry || this.peers.has(playerId) || this.watchPending.has(playerId)) return;
+    this.signaling = true;
+    this.watchPending.add(playerId);
+    entry.connState = 'connecting';
+    this.paint(playerId);
+    this.update();
+    clearTimeout(entry.watchTimer);
+    entry.watchTimer = setTimeout(() => {
+      if (this.peers.has(playerId)) return;
+      this.watchPending.delete(playerId);
+      if (entry.connState === 'connecting') entry.connState = '';
+      this.paint(playerId);
+      this.update();
+    }, 10000);
+    this.socket.emit('rtc-watch', { to: playerId });
+  }
+
+  onWatchRequest(playerId) {
+    if (!this.joined || !this.localStream || !playerId) return;
+    const conn = this.peers.get(playerId);
+    if (conn && conn.pc.connectionState !== 'connected') this.dropPeer(playerId);
+    const entry = this.tiles.get(playerId);
+    if (entry) {
+      entry.watching = true;
+      this.paint(playerId);
+    }
+    this.call(playerId);
   }
 
   liveCount() {
@@ -241,20 +326,23 @@ export class VideoChat {
   reconnect() {
     if (!this.joined) return;
     for (const id of [...this.peers.keys()]) this.dropPeer(id);
+    this.signaling = true;
     this.socket.emit('rtc-hello');
     this.emitMedia();
   }
 
   leave() {
-    if (!this.joined) return;
+    if (!this.joined && !this.signaling) return;
     this.stopWatching(this.viewerId ? this.tiles.get(this.viewerId) : null);
     for (const track of this.localStream ? this.localStream.getTracks() : []) track.stop();
     this.localStream = null;
     this.joined = false;
     this.videoOn = false;
     this.audioOn = false;
+    this.watchPending.clear();
     for (const id of [...this.peers.keys()]) this.dropPeer(id);
-    this.socket.emit('rtc-bye');
+    if (this.signaling) this.socket.emit('rtc-bye');
+    this.signaling = false;
     this.paintSelfState();
     this.update();
   }
@@ -306,8 +394,11 @@ export class VideoChat {
     const pc = new RTCPeerConnection({ iceServers: iceServers() });
     const conn = { pc, pending: [] };
     this.peers.set(peerId, conn);
+    this.watchPending.delete(peerId);
     const entry = this.tiles.get(peerId);
     if (entry) {
+      clearTimeout(entry.watchTimer);
+      entry.watchTimer = 0;
       entry.connState = 'connecting';
       this.paint(peerId);
       this.update();
@@ -329,6 +420,10 @@ export class VideoChat {
       entry.video.srcObject = entry.stream;
       entry.video.play().catch(() => {});
       entry.inCall = true;
+      entry.watching = false;
+      this.watchPending.delete(peerId);
+      clearTimeout(entry.watchTimer);
+      entry.watchTimer = 0;
       if (event.track.kind === 'video') entry.cam = true;
       if (event.track.kind === 'audio') {
         entry.mic = true;
@@ -345,6 +440,7 @@ export class VideoChat {
       if (state === 'connected') {
         tile.connState = 'connected';
         tile.retries = 0;
+        if (!tile.inCall && !tile.stream) tile.watching = true;
         this.paint(peerId);
         this.update();
         return;
@@ -369,7 +465,7 @@ export class VideoChat {
   }
 
   retryPeer(peerId) {
-    if (!this.joined) return;
+    if (!this.signaling) return;
     const entry = this.tiles.get(peerId);
     if (!entry || entry.retries >= 2 || entry.retryTimer) return;
     entry.retries += 1;
@@ -377,6 +473,7 @@ export class VideoChat {
     entry.video.srcObject = null;
     entry.stream = null;
     entry.inCall = false;
+    entry.watching = false;
     entry.cam = false;
     entry.mic = false;
     entry.connState = 'connecting';
@@ -384,18 +481,29 @@ export class VideoChat {
     this.update();
     entry.retryTimer = setTimeout(() => {
       entry.retryTimer = 0;
-      if (!this.joined || !this.tiles.has(peerId)) return;
-      this.call(peerId);
+      if (!this.signaling || !this.tiles.has(peerId)) return;
+      if (this.joined) this.call(peerId);
+      else this.watchPeer(peerId);
     }, 900);
   }
 
   async onSignal(from, data) {
-    if (!this.joined || !from || !data) return;
+    if (!this.signaling || !from || !data) return;
 
     if (data.description) {
       const desc = data.description;
       if (desc.type === 'offer') {
-        const conn = this.peers.get(from) || this.makePeer(from);
+        let conn = this.peers.get(from);
+        if (
+          conn &&
+          (conn.pc.connectionState === 'failed' ||
+            conn.pc.connectionState === 'closed' ||
+            conn.pc.connectionState === 'disconnected')
+        ) {
+          this.dropPeer(from);
+          conn = null;
+        }
+        conn = conn || this.makePeer(from);
         try {
           await conn.pc.setRemoteDescription(desc);
           await this.flushCandidates(conn);
@@ -445,17 +553,21 @@ export class VideoChat {
   }
 
   onMedia(payload) {
-    const entry = payload.playerId ? this.tiles.get(payload.playerId) : null;
+    const playerId = payload.playerId;
+    const entry = playerId ? this.tiles.get(playerId) : null;
     if (!entry) return;
     entry.cam = !!payload.video;
     entry.mic = !!payload.audio;
-    this.paint(payload.playerId);
+    this.remoteMedia.set(playerId, { video: entry.cam, audio: entry.mic });
+    if (!this.joined && (entry.cam || entry.mic)) this.watchPeer(playerId);
+    this.paint(playerId);
+    this.update();
   }
 
   onPeerJoined(playerId) {
     const entry = playerId ? this.tiles.get(playerId) : null;
     if (entry) {
-      entry.inCall = true;
+      if (this.joined) entry.inCall = true;
       this.paint(playerId);
       this.update();
     }
@@ -470,12 +582,19 @@ export class VideoChat {
       } catch {}
       this.peers.delete(playerId);
     }
+    this.watchPending.delete(playerId);
+    this.remoteMedia.delete(playerId);
     const entry = playerId ? this.tiles.get(playerId) : null;
-    if (entry) this.stopWatching(entry);
+    if (entry) {
+      this.stopWatching(entry);
+      clearTimeout(entry.watchTimer);
+      entry.watchTimer = 0;
+    }
     if (removeOnly || !entry) return;
     entry.video.srcObject = null;
     entry.stream = null;
     entry.inCall = false;
+    entry.watching = false;
     entry.cam = false;
     entry.mic = false;
     entry.connState = '';

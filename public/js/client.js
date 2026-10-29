@@ -101,6 +101,7 @@ socket.on('connect', () => {
       return;
     }
     if (video.joined) video.reconnect();
+    else video.refresh();
   });
 });
 
@@ -244,6 +245,8 @@ function updateVideoControls() {
       'Camera/mic blocked. Allow access in your browser, then tap Join again.';
   } else if (video.joined) {
     els.videoHint.textContent = 'Video chat is live. Toggle camera or mic anytime.';
+  } else if (live > 0) {
+    els.videoHint.textContent = 'Watching live video. Join to share your camera and mic.';
   } else {
     els.videoHint.textContent = 'Optional: join video to see and hear each other.';
   }
